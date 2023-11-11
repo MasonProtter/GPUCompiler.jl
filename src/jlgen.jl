@@ -54,10 +54,10 @@ function is redefined.
 
 If the method is not found, a `MethodError` is thrown.
 """
-function methodinstance(ft::Type, tt::Type, world::Integer)
+function methodinstance(ft::Type, tt::Type, world::Integer; methodtable=nothing)
     sig = typed_signature(ft, tt)
 
-    match, _ = CC._findsup(sig, nothing, world)
+    match, _ = CC._findsup(sig, methodtable, world)
     match === nothing && throw(MethodError(ft, tt, world))
 
     mi = CC.specialize_method(match)
@@ -70,7 +70,7 @@ if VERSION >= v"1.10.0-DEV.873"
 # on 1.10 (JuliaLang/julia#48611) generated functions know which world to generate code for.
 # we can use this to cache and automatically invalidate method instance look-ups.
 
-function methodinstance_generator(world::UInt, source, self, ft::Type, tt::Type)
+function methodinstance_generator(world::UInt, source, self, ft::Type, tt::Type, methodtable)
     @nospecialize
     @assert CC.isType(ft) && CC.isType(tt)
     ft = ft.parameters[1]
@@ -85,7 +85,7 @@ function methodinstance_generator(world::UInt, source, self, ft::Type, tt::Type)
     max_world = Ref{UInt}(typemax(UInt))
     match = ccall(:jl_gf_invoke_lookup_worlds, Any,
                   (Any, Any, Csize_t, Ref{Csize_t}, Ref{Csize_t}),
-                  sig, #=mt=# nothing, world, min_world, max_world)
+                  sig, methodtable, world, min_world, max_world)
     match === nothing && return stub(world, source, method_error)
 
     # look up the method and code instance
@@ -120,7 +120,7 @@ function methodinstance_generator(world::UInt, source, self, ft::Type, tt::Type)
     return new_ci
 end
 
-@eval function methodinstance(ft, tt)
+@eval function methodinstance(ft, tt, methodtable=nothing)
     $(Expr(:meta, :generated_only))
     $(Expr(:meta, :generated, methodinstance_generator))
 end
